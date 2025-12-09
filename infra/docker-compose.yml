@@ -56,6 +56,7 @@ services:
       APP__DB_DSN: postgresql+asyncpg://orderuser:orderpass@order-db:5432/orderdb
       APP__RABBIT_URL: amqp://guest:guest@rabbitmq:5672/
       APP__SERVICE_NAME: order-service
+      PYTHONPATH: /app
     ports:
       - "8000:8000"
     depends_on:
@@ -73,6 +74,7 @@ services:
       APP__DB_DSN: postgresql+asyncpg://processor_user:processor_pass@processor-db:5432/processor_db
       APP__RABBIT_URL: amqp://guest:guest@rabbitmq:5672/
       APP__SERVICE_NAME: processor-service
+      PYTHONPATH: /app
     ports:
       - "8001:8000"
     depends_on:
