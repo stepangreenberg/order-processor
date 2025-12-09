@@ -1,0 +1,86 @@
+version: "3.9"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: order_processor-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  order-db:
+    image: postgres:15-alpine
+    container_name: order_processor-order-db
+    environment:
+      POSTGRES_DB: orderdb
+      POSTGRES_USER: orderuser
+      POSTGRES_PASSWORD: orderpass
+    ports:
+      - "5433:5432"
+    volumes:
+      - order-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orderuser -d orderdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  processor-db:
+    image: postgres:15-alpine
+    container_name: order_processor-processor-db
+    environment:
+      POSTGRES_DB: processor_db
+      POSTGRES_USER: processor_user
+      POSTGRES_PASSWORD: processor_pass
+    ports:
+      - "5434:5432"
+    volumes:
+      - processor-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U processor_user -d processor_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  order-service:
+    build:
+      context: ../order-service
+      dockerfile: Dockerfile
+    container_name: order_processor-order-service
+    environment:
+      APP__DB_DSN: postgresql+asyncpg://orderuser:orderpass@order-db:5432/orderdb
+      APP__RABBIT_URL: amqp://guest:guest@rabbitmq:5672/
+      APP__SERVICE_NAME: order-service
+    ports:
+      - "8000:8000"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      order-db:
+        condition: service_healthy
+
+  processor-service:
+    build:
+      context: ../processor-service
+      dockerfile: Dockerfile
+    container_name: order_processor-processor-service
+    environment:
+      APP__DB_DSN: postgresql+asyncpg://processor_user:processor_pass@processor-db:5432/processor_db
+      APP__RABBIT_URL: amqp://guest:guest@rabbitmq:5672/
+      APP__SERVICE_NAME: processor-service
+    ports:
+      - "8001:8000"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      processor-db:
+        condition: service_healthy
+
+volumes:
+  order-db-data:
+  processor-db-data:
