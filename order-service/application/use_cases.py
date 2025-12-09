@@ -15,6 +15,11 @@ class OutboxWriter(Protocol):
     async def put(self, event_type: str, payload: dict) -> None: ...
 
 
+class InboxStore(Protocol):
+    async def exists(self, event_key: str) -> bool: ...
+    async def add(self, event_key: str) -> None: ...
+
+
 class UnitOfWork(Protocol):
     async def __aenter__(self) -> "UnitOfWork": ...
     async def __aexit__(self, exc_type, exc, tb) -> None: ...
@@ -23,6 +28,8 @@ class UnitOfWork(Protocol):
     def orders(self) -> OrderRepository: ...
     @property
     def outbox(self) -> OutboxWriter: ...
+    @property
+    def inbox(self) -> InboxStore: ...
 
 
 @dataclass
@@ -58,5 +65,37 @@ class CreateOrderUseCase:
                     "version": order.version,
                 },
             )
+            await self.uow.commit()
+            return order
+
+
+@dataclass
+class ApplyProcessedCommand:
+    order_id: str
+    status: str
+    reason: str | None
+    version: int
+
+
+class ApplyProcessedUseCase:
+    def __init__(self, uow: UnitOfWork):
+        self.uow = uow
+
+    async def execute(self, cmd: ApplyProcessedCommand) -> Order | None:
+        event_key = f"order.processed:{cmd.order_id}:{cmd.version}"
+        async with self.uow:
+            if await self.uow.inbox.exists(event_key):
+                return None
+
+            order = await self.uow.orders.get(cmd.order_id)
+            if not order:
+                return None
+            if cmd.version <= order.version:
+                return None
+
+            order.status = "done" if cmd.status == "success" else "failed"
+            order.version = cmd.version
+            await self.uow.inbox.add(event_key)
+            await self.uow.orders.add(order)
             await self.uow.commit()
             return order
