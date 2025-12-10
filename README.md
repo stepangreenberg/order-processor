@@ -24,69 +24,89 @@
 
 ## Возможности
 
-✅ **Событийно-Ориентированная Архитектура** - Асинхронная коммуникация через RabbitMQ
-✅ **Паттерн Outbox** - Надежная публикация событий с транзакционными гарантиями
-✅ **Паттерн Inbox** - Дедупликация событий для идемпотентности
-✅ **Оптимистичная Конкурентность** - Разрешение конфликтов на основе версий
-✅ **Логика Повторов** - Автоматические повторы с экспоненциальной задержкой
-✅ **Чистая Архитектура** - Разделение Domain/Application/Infrastructure
-✅ **Полное Покрытие Тестами** - Unit тесты + Integration тесты с Testcontainers
+ - ✅ **Событийно-Ориентированная Архитектура** - Асинхронная коммуникация через RabbitMQ
+ - ✅ **Паттерн Outbox** - Надежная публикация событий с транзакционными гарантиями
+ - ✅ **Паттерн Inbox** - Дедупликация событий для идемпотентности
+ - ✅ **Оптимистичная Конкурентность** - Разрешение конфликтов на основе версий
+ - ✅ **Логика Повторов** - Автоматические повторы с экспоненциальной задержкой (max 3 попытки)
+ - ✅ **Dead Letter Queue (DLQ)** - Обработка failed событий после превышения лимита повторов
+ - ✅ **Database Migrations** - Alembic для версионирования схемы БД с полным покрытием тестами
+ - ✅ **Prometheus Metrics** - Простой /metrics endpoint для мониторинга
+ - ✅ **Чистая Архитектура** - Разделение Domain/Application/Infrastructure
+ - ✅ **Полное Покрытие Тестами** - 45+ тестов (Unit + Integration) с Testcontainers
 
 ## Быстрый Старт
 
 ### Требования
 
 - Docker & Docker Compose
-- Python 3.12+
+- Git
 
-### 1. Запуск Инфраструктуры
+### 1. Клонирование Репозитория
 
 ```bash
+git clone https://github.com/stepangreenberg/order-processor.git
+cd order-processor
+```
+
+### 2. Запуск Всех Сервисов через Docker Compose
+
+```bash
+cd infra
 docker-compose up -d
 ```
 
 Это запустит:
-- PostgreSQL (БД order-service) на порту 5432
-- PostgreSQL (БД processor-service) на порту 5433
-- RabbitMQ на порту 5672 (UI управления: http://localhost:15672)
+- **RabbitMQ** на портах 5672 (AMQP) и 15672 (Management UI: http://localhost:15672)
+- **PostgreSQL (order-db)** на порту 5433 (orderdb)
+- **PostgreSQL (processor-db)** на порту 5434 (processor_db)
+- **Order Service** на порту 8000 (http://localhost:8000)
+- **Processor Service** на порту 8001 (http://localhost:8001)
 
-### 2. Установка Зависимостей
+### 3. Проверка Статуса Сервисов
 
-**Order Service:**
 ```bash
-cd order-service
-python3 -m pip install -r requirements.txt
+docker-compose ps
 ```
 
-**Processor Service:**
+Все сервисы должны быть в статусе "Up" (healthy).
+
+**Просмотр логов:**
 ```bash
-cd processor-service
-python3 -m pip install -r requirements.txt
+# Все сервисы
+docker-compose logs -f
+
+# Конкретный сервис
+docker-compose logs -f order-service
+docker-compose logs -f processor-service
 ```
 
-### 3. Запуск Сервисов
-
-**Терминал 1 - Order Service:**
+**Остановка сервисов:**
 ```bash
-cd order-service
-export APP__DB_DSN="postgresql+asyncpg://postgres:postgres@localhost:5432/orders"
-export APP__RABBITMQ_URL="amqp://guest:guest@localhost:5672/"
-uvicorn app.main:app --reload --port 8001
+docker-compose down
 ```
 
-**Терминал 2 - Processor Service:**
+**Остановка с удалением данных:**
 ```bash
-cd processor-service
-export APP__DB_DSN="postgresql+asyncpg://postgres:postgres@localhost:5433/processor"
-export APP__RABBITMQ_URL="amqp://guest:guest@localhost:5672/"
-uvicorn app.main:app --reload --port 8002
+docker-compose down -v
 ```
+
+**Запуск миграций базы данных:**
+```bash
+# Order Service
+docker exec -it order_processor-order-service alembic upgrade head
+
+# Processor Service
+docker exec -it order_processor-processor-service alembic upgrade head
+```
+
+> **Примечание:** Миграции запускаются автоматически при старте сервисов, но вы можете запустить их вручную при необходимости.
 
 ### 4. Тестирование Системы
 
 **Создать заказ:**
 ```bash
-curl -X POST http://localhost:8001/orders \
+curl -X POST http://localhost:8000/orders \
   -H "Content-Type: application/json" \
   -d '{
     "order_id": "ord-001",
@@ -99,7 +119,7 @@ curl -X POST http://localhost:8001/orders \
 
 **Проверить статус заказа:**
 ```bash
-curl http://localhost:8001/orders/ord-001
+curl http://localhost:8000/orders/ord-001
 ```
 
 Заказ будет:
@@ -138,21 +158,62 @@ curl http://localhost:8001/orders/ord-001
 
 **GET /health** - Проверка здоровья сервиса
 
+**GET /metrics** - Prometheus-совместимые метрики
+```
+# HELP events_published_total Total number of events successfully published
+# TYPE events_published_total counter
+events_published_total 42
+
+# HELP events_failed_total Total number of events that failed to publish
+# TYPE events_failed_total counter
+events_failed_total 3
+
+# HELP events_moved_to_dlq_total Total number of events moved to DLQ
+# TYPE events_moved_to_dlq_total counter
+events_moved_to_dlq_total 2
+
+# HELP orders_created_total Total number of orders created
+# TYPE orders_created_total counter
+orders_created_total 15
+
+# HELP orders_processed_total Total number of orders processed
+# TYPE orders_processed_total counter
+orders_processed_total 12
+```
+
 ### Processor Service
 
 **GET /health** - Проверка здоровья сервиса
 
+**GET /metrics** - Prometheus-совместимые метрики (аналогично Order Service)
+
 ## Запуск Тестов
+
+### Запуск тестов внутри Docker контейнеров:
+
+**Order Service:**
+```bash
+docker exec -it order_processor-order-service pytest tests/ -v
+```
+
+**Processor Service:**
+```bash
+docker exec -it order_processor-processor-service pytest tests/ -v
+```
+
+### Запуск тестов локально (требует Python 3.12+):
 
 **Order Service:**
 ```bash
 cd order-service
+python3 -m pip install -r requirements.txt
 python3 -m pytest tests/ -v
 ```
 
 **Processor Service:**
 ```bash
 cd processor-service
+python3 -m pip install -r requirements.txt
 python3 -m pytest tests/ -v
 ```
 
@@ -269,10 +330,13 @@ order.version = cmd.version
 - **FastAPI** - HTTP фреймворк
 - **SQLAlchemy 2.0** - ORM с async поддержкой
 - **asyncpg** - PostgreSQL async драйвер
+- **Alembic** - Миграции базы данных
 - **aio-pika** - RabbitMQ async клиент
 - **Pydantic** - Валидация данных
 - **pytest** - Фреймворк для тестирования
 - **Testcontainers** - Интеграционное тестирование
+- **nest-asyncio** - Поддержка вложенных event loops
+- **Docker & Docker Compose** - Контейнеризация и оркестрация
 
 ## Лицензия
 
