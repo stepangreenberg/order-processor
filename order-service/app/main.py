@@ -3,6 +3,7 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.schemas import CreateOrderRequest, OrderResponse
@@ -11,6 +12,7 @@ from application.use_cases import CreateOrderCommand, CreateOrderUseCase
 from domain.order import ItemLine, ValidationError
 from infrastructure import db
 from infrastructure.message_bus import OutboxPublisher, OrderProcessedConsumer
+from infrastructure.metrics import metrics
 import aio_pika
 from fastapi.exceptions import RequestValidationError
 
@@ -117,6 +119,15 @@ app.add_exception_handler(Exception, generic_error_handler)
 @app.get("/health")
 async def health() -> dict:
     return {"service": get_service_name(), "status": "ok"}
+
+
+@app.get("/metrics")
+async def get_metrics() -> Response:
+    """Prometheus-compatible metrics endpoint."""
+    return Response(
+        content=metrics.get_prometheus_text(),
+        media_type="text/plain; version=0.0.4"
+    )
 
 
 @app.post("/orders", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)

@@ -10,6 +10,7 @@ from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from infrastructure.db import outbox, dead_letter_queue, SqlAlchemyUnitOfWork
+from infrastructure.metrics import metrics
 from application.use_cases import ApplyProcessedUseCase, ApplyProcessedCommand
 
 
@@ -102,6 +103,7 @@ class OutboxPublisher:
                     await conn.execute(
                         delete(outbox).where(outbox.c.id == event_data["id"])
                     )
+                metrics.increment("events_moved_to_dlq_total")
                 continue  # Move to next event
 
             # Check if backoff delay has elapsed
@@ -146,6 +148,7 @@ class OutboxPublisher:
                     )
 
                 published_count += 1
+                metrics.increment("events_published_total")
 
             except Exception as e:
                 # On failure, increment retry_count and update last_retry_at
@@ -158,6 +161,7 @@ class OutboxPublisher:
                             last_retry_at=datetime.now(timezone.utc).isoformat()
                         )
                     )
+                metrics.increment("events_failed_total")
                 # Continue to next event (don't fail entire batch)
 
         return published_count

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol, List
 
 from domain.processing import ProcessingResult, ProcessingState
+from infrastructure.metrics import metrics
 
 
 class ProcessingStateRepo(Protocol):
@@ -77,4 +78,5 @@ class HandleOrderCreatedUseCase:
                 },
             )
             await self.uow.commit()
+            metrics.increment("orders_processed_total")
             return result

@@ -3,11 +3,13 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.errors import generic_error_handler
 from infrastructure import db
 from infrastructure.message_bus import OutboxPublisher, OrderCreatedConsumer
+from infrastructure.metrics import metrics
 import aio_pika
 
 
@@ -111,3 +113,12 @@ app.add_exception_handler(Exception, generic_error_handler)
 @app.get("/health")
 async def health() -> dict:
     return {"service": get_service_name(), "status": "ok"}
+
+
+@app.get("/metrics")
+async def get_metrics() -> Response:
+    """Prometheus-compatible metrics endpoint."""
+    return Response(
+        content=metrics.get_prometheus_text(),
+        media_type="text/plain; version=0.0.4"
+    )

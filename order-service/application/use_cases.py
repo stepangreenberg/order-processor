@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol, List
 
 from domain.order import ItemLine, Order, ValidationError
+from infrastructure.metrics import metrics
 
 
 class OrderRepository(Protocol):
@@ -66,6 +67,7 @@ class CreateOrderUseCase:
                 },
             )
             await self.uow.commit()
+            metrics.increment("orders_created_total")
             return order
 
 
@@ -98,4 +100,5 @@ class ApplyProcessedUseCase:
             await self.uow.inbox.add(event_key)
             await self.uow.orders.add(order)
             await self.uow.commit()
+            metrics.increment("orders_processed_total")
             return order
