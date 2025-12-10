@@ -41,6 +41,19 @@ processed_inbox = Table(
     Column("event_key", String, primary_key=True),
 )
 
+# Dead Letter Queue - for events that failed after max retries
+dead_letter_queue = Table(
+    "dead_letter_queue",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("original_event_type", String, nullable=False),
+    Column("payload", JSONB, nullable=False),
+    Column("retry_count", Integer, nullable=False),
+    Column("last_retry_at", String, nullable=True),
+    Column("failure_reason", String, nullable=False),
+    Column("moved_to_dlq_at", String, nullable=False),
+)
+
 
 def get_engine(dsn: Optional[str] = None) -> AsyncEngine:
     """Get database engine from DSN or environment variable."""

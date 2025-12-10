@@ -92,7 +92,7 @@ async def test_should_retry_event_checks_last_retry_time():
 
 @pytest.mark.asyncio
 async def test_outbox_publisher_stops_at_max_retries(db_engine):
-    """Test that OutboxPublisher stops retrying after MAX_RETRIES."""
+    """Test that OutboxPublisher moves events to DLQ after MAX_RETRIES."""
     # Create event that has reached MAX_RETRIES
     async with db_engine.begin() as conn:
         await conn.execute(
@@ -105,23 +105,26 @@ async def test_outbox_publisher_stops_at_max_retries(db_engine):
             )
         )
 
-    # Publisher should NOT try to publish this event
-    # Instead it should be marked as failed or moved to DLQ
+    # Publisher should move this event to DLQ
     publisher = OutboxPublisher(db_engine, rabbitmq_url="amqp://invalid")
 
-    # This should not raise an exception, just skip the event
+    # This should not raise an exception, just move event to DLQ
     result = await publisher.publish_pending()
 
-    # Event should still be unpublished but marked as failed
+    # Event should be removed from outbox
     async with db_engine.begin() as conn:
-        rows = await conn.execute(
-            select(db.outbox).where(db.outbox.c.retry_count >= 5)
-        )
-        event = rows.first()
+        rows = await conn.execute(select(db.outbox))
+        assert rows.first() is None  # Event removed from outbox
 
-    assert event is not None
-    assert event.retry_count == 5
-    assert event.published_at is None  # Not published
+    # Event should be in DLQ
+    async with db_engine.begin() as conn:
+        rows = await conn.execute(select(db.dead_letter_queue))
+        dlq_event = rows.first()
+
+    assert dlq_event is not None
+    assert dlq_event.original_event_type == "test.event"
+    assert dlq_event.retry_count == 5
+    assert dlq_event.failure_reason == "Max retries (5) exceeded"
 
 
 @pytest.mark.asyncio

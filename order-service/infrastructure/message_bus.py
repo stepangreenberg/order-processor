@@ -6,10 +6,10 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import aio_pika
-from sqlalchemy import select, update
+from sqlalchemy import delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from infrastructure.db import outbox, SqlAlchemyUnitOfWork
+from infrastructure.db import outbox, dead_letter_queue, SqlAlchemyUnitOfWork
 from application.use_cases import ApplyProcessedUseCase, ApplyProcessedCommand
 
 
@@ -83,12 +83,33 @@ class OutboxPublisher:
         for event in events:
             event_data = event._mapping
 
-            # Check if event should be retried (respecting max retries and backoff)
+            # Check if event has reached MAX_RETRIES - move to DLQ
+            if not should_retry_event(event_data["retry_count"]):
+                # Move to Dead Letter Queue
+                async with self.engine.begin() as conn:
+                    # Insert into DLQ
+                    await conn.execute(
+                        insert(dead_letter_queue).values(
+                            original_event_type=event_data["event_type"],
+                            payload=event_data["payload"],
+                            retry_count=event_data["retry_count"],
+                            last_retry_at=event_data.get("last_retry_at"),
+                            failure_reason=f"Max retries ({MAX_RETRIES}) exceeded",
+                            moved_to_dlq_at=datetime.now(timezone.utc).isoformat()
+                        )
+                    )
+                    # Delete from outbox
+                    await conn.execute(
+                        delete(outbox).where(outbox.c.id == event_data["id"])
+                    )
+                continue  # Move to next event
+
+            # Check if backoff delay has elapsed
             if not should_retry_event_with_backoff(
                 event_data["retry_count"],
                 event_data.get("last_retry_at")
             ):
-                continue  # Skip this event (either max retries reached or backoff not elapsed)
+                continue  # Skip this event (backoff not elapsed)
 
             try:
                 # Connect to RabbitMQ
