@@ -1,21 +1,21 @@
-# Architecture Documentation
+# Документация по Архитектуре
 
-## System Overview
+## Обзор Системы
 
-This is a distributed microservices system implementing event-driven architecture with strong consistency guarantees through the Outbox and Inbox patterns.
+Это распределенная микросервисная система, реализующая событийно-ориентированную архитектуру с гарантиями строгой согласованности через паттерны Outbox и Inbox.
 
-## Architecture Principles
+## Принципы Архитектуры
 
-### 1. Event-Driven Architecture (EDA)
+### 1. Событийно-Ориентированная Архитектура (EDA)
 
-Services communicate asynchronously via events published to RabbitMQ:
-- **Loose Coupling** - Services don't know about each other directly
-- **Scalability** - Services can be scaled independently
-- **Resilience** - Failures in one service don't cascade
+Сервисы общаются асинхронно через события, публикуемые в RabbitMQ:
+- **Слабая Связанность** - Сервисы не знают друг о друге напрямую
+- **Масштабируемость** - Сервисы можно масштабировать независимо
+- **Устойчивость** - Сбои в одном сервисе не каскадируются
 
-### 2. Clean Architecture
+### 2. Чистая Архитектура
 
-Each service follows Clean Architecture principles:
+Каждый сервис следует принципам Чистой Архитектуры:
 
 ```
 ┌─────────────────────────────────────┐
@@ -29,34 +29,34 @@ Each service follows Clean Architecture principles:
 └─────────────────────────────────────┘
 ```
 
-**Benefits:**
-- Domain logic is independent of frameworks
-- Easy to test (domain has no dependencies)
-- Can swap infrastructure without changing business logic
+**Преимущества:**
+- Доменная логика независима от фреймворков
+- Легко тестировать (домен не имеет зависимостей)
+- Можно менять инфраструктуру без изменения бизнес-логики
 
-### 3. Outbox Pattern
+### 3. Паттерн Outbox
 
-**Problem:** How to atomically update the database AND publish an event?
+**Проблема:** Как атомарно обновить БД И опубликовать событие?
 
-**Solution:** Write the event to an outbox table in the same transaction:
+**Решение:** Записать событие в таблицу outbox в той же транзакции:
 
 ```python
 async with uow:
-    # Business logic
+    # Бизнес-логика
     order = Order.create(...)
     await uow.orders.add(order)
 
-    # Outbox event
+    # Событие в outbox
     await uow.outbox.put("order.created", {
         "order_id": order.order_id,
         "amount": order.total_amount
     })
 
-    # Single atomic commit
+    # Единый атомарный коммит
     await uow.commit()
 ```
 
-**Background Publisher** polls outbox and publishes to RabbitMQ:
+**Background Publisher** опрашивает outbox и публикует в RabbitMQ:
 
 ```python
 while True:
@@ -67,60 +67,60 @@ while True:
     await asyncio.sleep(5)
 ```
 
-**Guarantees:**
-- ✅ Event is published AT LEAST ONCE
-- ✅ No event is lost (survives crashes)
-- ❌ May publish duplicates (handled by Inbox pattern)
+**Гарантии:**
+- ✅ Событие публикуется КАК МИНИМУМ ОДИН РАЗ
+- ✅ Ни одно событие не теряется (переживает крахи)
+- ❌ Может публиковать дубликаты (обрабатывается паттерном Inbox)
 
-### 4. Inbox Pattern
+### 4. Паттерн Inbox
 
-**Problem:** Consumer may receive duplicate events (network retries, etc.)
+**Проблема:** Потребитель может получить дубликаты событий (повторы сети и т.д.)
 
-**Solution:** Track processed events in inbox table:
+**Решение:** Отслеживать обработанные события в таблице inbox:
 
 ```python
 event_key = f"order.processed:{order_id}:{version}"
 
 async with uow:
     if await uow.inbox.exists(event_key):
-        return  # Already processed, skip
+        return  # Уже обработано, пропускаем
 
-    # Process event
+    # Обработка события
     order.status = "done"
     await uow.orders.add(order)
 
-    # Mark as processed
+    # Отметить как обработанное
     await uow.inbox.add(event_key)
 
     await uow.commit()
 ```
 
-**Guarantees:**
-- ✅ Idempotent processing (safe to replay events)
-- ✅ Exactly-once semantics at application level
+**Гарантии:**
+- ✅ Идемпотентная обработка (безопасно повторять события)
+- ✅ Семантика exactly-once на уровне приложения
 
-### 5. Optimistic Concurrency Control
+### 5. Оптимистичный Контроль Конкурентности
 
-Uses version numbers to detect conflicts:
+Использует номера версий для обнаружения конфликтов:
 
 ```python
-# Event arrives with version=2
+# Приходит событие с version=2
 if event.version <= order.version:  # order.version=3
-    return  # Stale event, ignore
+    return  # Устаревшее событие, игнорируем
 
-# Event is newer, apply it
+# Событие новее, применяем его
 order.status = event.status
 order.version = event.version
 ```
 
-**Why not pessimistic locking?**
-- No distributed locks needed
-- Better performance (no lock contention)
-- Works across different databases
+**Почему не пессимистическая блокировка?**
+- Не нужны распределенные блокировки
+- Лучшая производительность (нет конкуренции за блокировки)
+- Работает на разных базах данных
 
-## Data Flow
+## Поток Данных
 
-### Creating an Order
+### Создание Заказа
 
 ```
 ┌──────────┐
@@ -192,11 +192,11 @@ order.version = event.version
 └─────────────────────────────────────────┘
 ```
 
-## Database Schema
+## Схема Базы Данных
 
 ### Order Service
 
-**orders table:**
+**Таблица orders:**
 ```sql
 CREATE TABLE orders (
     order_id VARCHAR PRIMARY KEY,
@@ -208,7 +208,7 @@ CREATE TABLE orders (
 );
 ```
 
-**outbox table:**
+**Таблица outbox:**
 ```sql
 CREATE TABLE outbox (
     id SERIAL PRIMARY KEY,
@@ -219,7 +219,7 @@ CREATE TABLE outbox (
 );
 ```
 
-**processed_inbox table:**
+**Таблица processed_inbox:**
 ```sql
 CREATE TABLE processed_inbox (
     event_key VARCHAR PRIMARY KEY
@@ -228,7 +228,7 @@ CREATE TABLE processed_inbox (
 
 ### Processor Service
 
-**processing_states table:**
+**Таблица processing_states:**
 ```sql
 CREATE TABLE processing_states (
     order_id VARCHAR PRIMARY KEY,
@@ -239,16 +239,16 @@ CREATE TABLE processing_states (
 );
 ```
 
-**outbox table:** (same as order-service)
+**Таблица outbox:** (такая же, как в order-service)
 
-**processed_inbox table:** (same as order-service)
+**Таблица processed_inbox:** (такая же, как в order-service)
 
-## Event Schema
+## Схема Событий
 
 ### order.created
 
-Published by: Order Service
-Consumed by: Processor Service
+Публикуется: Order Service
+Потребляется: Processor Service
 
 ```json
 {
@@ -261,72 +261,72 @@ Consumed by: Processor Service
 
 ### order.processed
 
-Published by: Processor Service
-Consumed by: Order Service
+Публикуется: Processor Service
+Потребляется: Order Service
 
 ```json
 {
   "order_id": "ord-001",
-  "status": "success",  // or "failed"
-  "reason": null,       // or error message
+  "status": "success",  // или "failed"
+  "reason": null,       // или сообщение об ошибке
   "version": 2
 }
 ```
 
-## Reliability Guarantees
+## Гарантии Надежности
 
-### 1. At-Least-Once Delivery
+### 1. Доставка Как Минимум Один Раз
 
-**Outbox Pattern ensures:**
-- Events are never lost (persisted in DB)
-- Events are published even if service crashes
-- Retries on failure
+**Паттерн Outbox гарантирует:**
+- События никогда не теряются (сохраняются в БД)
+- События публикуются даже при краше сервиса
+- Повторы при сбоях
 
-**Trade-off:** May deliver duplicates (handled by Inbox)
+**Компромисс:** Может доставлять дубликаты (обрабатывается Inbox)
 
-### 2. Idempotency
+### 2. Идемпотентность
 
-**Inbox Pattern ensures:**
-- Same event processed only once
-- Safe to replay events
-- No duplicate side effects
+**Паттерн Inbox гарантирует:**
+- Одно и то же событие обрабатывается только один раз
+- Безопасно повторять события
+- Нет дублирующихся побочных эффектов
 
-### 3. Eventual Consistency
+### 3. Eventual Consistency (Согласованность в Конечном Счете)
 
-**System guarantees:**
-- Orders will eventually be processed
-- Status will eventually be updated
-- Temporary inconsistency is acceptable
+**Система гарантирует:**
+- Заказы в конечном итоге будут обработаны
+- Статус в конечном итоге будет обновлен
+- Временная несогласованность приемлема
 
-**Example timeline:**
+**Пример временной шкалы:**
 ```
-t=0:  Order created (status=pending)
-t=1:  Event published to RabbitMQ
-t=2:  Processor receives event
-t=3:  Processing completes
-t=4:  Result published to RabbitMQ
-t=5:  Order status updated (status=done)
+t=0:  Заказ создан (status=pending)
+t=1:  Событие опубликовано в RabbitMQ
+t=2:  Процессор получает событие
+t=3:  Обработка завершена
+t=4:  Результат опубликован в RabbitMQ
+t=5:  Статус заказа обновлен (status=done)
 ```
 
-Between t=0 and t=5, the order is in `pending` state even though it might already be processed. This is acceptable for most business cases.
+Между t=0 и t=5 заказ находится в состоянии `pending`, хотя он может уже быть обработан. Это приемлемо для большинства бизнес-случаев.
 
-## Error Handling
+## Обработка Ошибок
 
-### 1. Transient Failures
+### 1. Временные Сбои
 
-**RabbitMQ connection lost:**
-- Consumer automatically reconnects (aio-pika `connect_robust`)
-- Retries every 5 seconds
-- No data loss (outbox persists events)
+**Потеряно соединение с RabbitMQ:**
+- Потребитель автоматически переподключается (aio-pika `connect_robust`)
+- Повторы каждые 5 секунд
+- Нет потери данных (outbox сохраняет события)
 
-**Database connection lost:**
-- SQLAlchemy connection pool handles retries
-- Failed transactions are rolled back
-- Events remain in outbox for retry
+**Потеряно соединение с БД:**
+- Пул подключений SQLAlchemy обрабатывает повторы
+- Неудачные транзакции откатываются
+- События остаются в outbox для повтора
 
-### 2. Permanent Failures
+### 2. Постоянные Сбои
 
-**Processing fails (business logic):**
+**Сбой обработки (бизнес-логика):**
 ```python
 try:
     result = process_order(order)
@@ -337,11 +337,11 @@ except Exception as e:
     state.attempt_count += 1
 ```
 
-**Poison messages (malformed events):**
-- Currently: Logged and skipped
-- Future: Move to Dead Letter Queue (DLQ)
+**Poison messages (некорректные события):**
+- Текущее: Логируются и пропускаются
+- Будущее: Перемещение в Dead Letter Queue (DLQ)
 
-### 3. Retry Strategy
+### 3. Стратегия Повторов
 
 **Outbox Publisher:**
 ```python
@@ -350,31 +350,31 @@ try:
     mark_as_published(event)
 except Exception:
     increment_retry_count(event)
-    # Retry on next poll (5s later)
+    # Повтор при следующем опросе (через 5с)
 ```
 
-**No exponential backoff yet** - fixed 5-second interval
-Future improvement: Exponential backoff with max retries
+**Пока нет экспоненциальной задержки** - фиксированный интервал 5 секунд
+Будущее улучшение: Экспоненциальная задержка с максимальным количеством повторов
 
-## Performance Considerations
+## Соображения Производительности
 
-### Bottlenecks
+### Узкие Места
 
-1. **Outbox Polling** - Every 5 seconds
-   - Could be optimized with PostgreSQL LISTEN/NOTIFY
-   - Or use change data capture (CDC)
+1. **Опрос Outbox** - Каждые 5 секунд
+   - Можно оптимизировать с PostgreSQL LISTEN/NOTIFY
+   - Или использовать change data capture (CDC)
 
-2. **Database Queries** - N+1 queries in some places
-   - Could batch operations
-   - Use connection pooling (already enabled)
+2. **Запросы к БД** - N+1 запросы в некоторых местах
+   - Можно пакетировать операции
+   - Использовать пул подключений (уже включено)
 
-3. **RabbitMQ Throughput** - Single consumer per service
-   - Could scale horizontally (multiple instances)
-   - Use prefetch to process multiple messages concurrently
+3. **Пропускная способность RabbitMQ** - Один потребитель на сервис
+   - Можно масштабировать горизонтально (несколько инстансов)
+   - Использовать prefetch для параллельной обработки нескольких сообщений
 
-### Scaling Strategy
+### Стратегия Масштабирования
 
-**Horizontal Scaling:**
+**Горизонтальное Масштабирование:**
 ```
 ┌──────────────┐  ┌──────────────┐  ┌──────────────┐
 │  Order-1     │  │  Order-2     │  │  Order-3     │
@@ -389,16 +389,16 @@ Future improvement: Exponential backoff with max retries
                     └──────────┘
 ```
 
-**Each instance:**
-- Has its own database connection
-- Polls its own outbox table
-- Consumes from shared RabbitMQ queue (competing consumers)
+**Каждый инстанс:**
+- Имеет свое подключение к БД
+- Опрашивает свою таблицу outbox
+- Потребляет из общей очереди RabbitMQ (конкурирующие потребители)
 
-**Inbox deduplication ensures** same event isn't processed twice even with multiple consumers.
+**Дедупликация Inbox гарантирует**, что одно и то же событие не обрабатывается дважды даже с несколькими потребителями.
 
-## Testing Strategy
+## Стратегия Тестирования
 
-### Unit Tests
+### Unit Тесты
 ```python
 # domain/order.py
 def test_order_calculates_total():
@@ -406,7 +406,7 @@ def test_order_calculates_total():
     assert order.total_amount == 1250.0
 ```
 
-### Integration Tests
+### Integration Тесты
 ```python
 # tests/test_api_create_order.py
 @pytest.mark.asyncio
@@ -415,54 +415,54 @@ async def test_create_order_success(initialized_app):
     assert response.status_code == 201
 ```
 
-### Test Database
-- Uses Testcontainers for real PostgreSQL
-- Each test gets isolated database
-- No mocks for infrastructure (test real behavior)
+### Тестовая БД
+- Использует Testcontainers для реального PostgreSQL
+- Каждый тест получает изолированную БД
+- Нет моков для инфраструктуры (тестируем реальное поведение)
 
-## Future Improvements
+## Будущие Улучшения
 
 ### 1. Dead Letter Queue (DLQ)
-Move poison messages to DLQ after N retries
+Перемещение poison messages в DLQ после N повторов
 
-### 2. Observability
-- Structured logging (JSON format)
-- Distributed tracing (OpenTelemetry)
-- Metrics (Prometheus)
+### 2. Observability (Наблюдаемость)
+- Структурированное логирование (JSON формат)
+- Распределенная трассировка (OpenTelemetry)
+- Метрики (Prometheus)
 
 ### 3. Database Migrations
-Use Alembic for schema versioning
+Использовать Alembic для версионирования схемы
 
 ### 4. API Versioning
-Support backward-compatible API changes
+Поддержка обратно совместимых изменений API
 
 ### 5. Rate Limiting
-Protect APIs from abuse
+Защита API от злоупотреблений
 
 ### 6. Circuit Breaker
-Fail fast when downstream service is down
+Быстрый отказ когда downstream сервис недоступен
 
-## Comparison with Alternatives
+## Сравнение с Альтернативами
 
-### SAGA Pattern
-Our approach is similar to choreography-based SAGA:
-- ✅ No central coordinator (simpler)
-- ✅ Services react to events independently
-- ❌ Harder to track overall flow (no single "SAGA log")
+### Паттерн SAGA
+Наш подход похож на SAGA на основе хореографии:
+- ✅ Нет центрального координатора (проще)
+- ✅ Сервисы реагируют на события независимо
+- ❌ Сложнее отслеживать общий поток (нет единого "SAGA лога")
 
 ### Two-Phase Commit (2PC)
-We don't use 2PC because:
-- ❌ Requires distributed transaction coordinator
-- ❌ Blocking (locks held during prepare phase)
-- ❌ Availability suffers if coordinator fails
+Мы не используем 2PC потому что:
+- ❌ Требует распределенного координатора транзакций
+- ❌ Блокирующий (блокировки удерживаются во время фазы подготовки)
+- ❌ Доступность страдает при отказе координатора
 
-Our eventual consistency approach:
-- ✅ Non-blocking
-- ✅ Higher availability
-- ✅ Better performance
-- ❌ Temporary inconsistency (acceptable trade-off)
+Наш подход eventual consistency:
+- ✅ Неблокирующий
+- ✅ Более высокая доступность
+- ✅ Лучшая производительность
+- ❌ Временная несогласованность (приемлемый компромисс)
 
-## References
+## Ссылки
 
 - [Microservices Patterns](https://microservices.io/patterns/index.html) by Chris Richardson
 - [Designing Data-Intensive Applications](https://dataintensive.net/) by Martin Kleppmann
