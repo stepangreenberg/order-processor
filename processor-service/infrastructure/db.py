@@ -94,6 +94,10 @@ class ProcessingStateRepository:
         )
         await self.session.execute(stmt)
 
+    async def upsert(self, state: ProcessingState) -> None:
+        """Alias for add - both perform upsert."""
+        await self.add(state)
+
 
 class OutboxWriter:
     """Writer for outbox pattern - reliable event publishing."""

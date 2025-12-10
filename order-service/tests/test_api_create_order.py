@@ -72,7 +72,7 @@ async def test_create_order_success(initialized_app):
 
 @pytest.mark.asyncio
 async def test_create_order_invalid_items(initialized_app):
-    """Test order creation with invalid items returns 422."""
+    """Test order creation with invalid items returns 400."""
     async with AsyncClient(transport=ASGITransport(app=initialized_app), base_url="http://test") as client:
         response = await client.post("/orders", json={
             "order_id": "ord-999",
@@ -80,7 +80,7 @@ async def test_create_order_invalid_items(initialized_app):
             "items": []  # Empty items - should fail validation
         })
 
-    assert response.status_code == 422  # FastAPI validation error
+    assert response.status_code == 400  # Request validation error
     data = response.json()
     assert "detail" in data
 

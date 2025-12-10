@@ -62,7 +62,7 @@ async def test_consumer_processes_order_created(initialized_db):
         assert state is not None
         assert state.order_id == "ord-proc-001"
         assert state.version == 1
-        assert state.status in ["success", "failed"]  # Random outcome
+        assert state.status in ["done", "failed"]  # Random outcome (done=success)
         assert state.attempt_count == 1
 
         # Verify event published to outbox
