@@ -6,11 +6,13 @@ from fastapi import FastAPI, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.schemas import CreateOrderRequest, OrderResponse
+from app.errors import validation_error_handler, generic_error_handler, request_validation_error_handler
 from application.use_cases import CreateOrderCommand, CreateOrderUseCase
 from domain.order import ItemLine, ValidationError
 from infrastructure import db
 from infrastructure.message_bus import OutboxPublisher, OrderProcessedConsumer
 import aio_pika
+from fastapi.exceptions import RequestValidationError
 
 
 def get_service_name() -> str:
@@ -106,6 +108,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Order Service", version="0.1.0", lifespan=lifespan)
 
+# Register error handlers
+app.add_exception_handler(ValidationError, validation_error_handler)
+app.add_exception_handler(RequestValidationError, request_validation_error_handler)
+app.add_exception_handler(Exception, generic_error_handler)
+
 
 @app.get("/health")
 async def health() -> dict:
@@ -118,38 +125,33 @@ async def create_order(request: CreateOrderRequest) -> OrderResponse:
     if not engine:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
-    try:
-        # Convert request to domain objects
-        items = [
-            ItemLine(sku=item.sku, quantity=item.quantity, price=item.price)
-            for item in request.items
-        ]
+    # Convert request to domain objects
+    items = [
+        ItemLine(sku=item.sku, quantity=item.quantity, price=item.price)
+        for item in request.items
+    ]
 
-        # Create command
-        command = CreateOrderCommand(
-            order_id=request.order_id,
-            customer_id=request.customer_id,
-            items=items
-        )
+    # Create command
+    command = CreateOrderCommand(
+        order_id=request.order_id,
+        customer_id=request.customer_id,
+        items=items
+    )
 
-        # Execute use case (handles idempotency internally)
-        uow = db.SqlAlchemyUnitOfWork(engine)
-        use_case = CreateOrderUseCase(uow)
-        order = await use_case.execute(command)
+    # Execute use case (handles idempotency internally)
+    # Let exceptions bubble up to global handlers
+    uow = db.SqlAlchemyUnitOfWork(engine)
+    use_case = CreateOrderUseCase(uow)
+    order = await use_case.execute(command)
 
-        # Return response
-        return OrderResponse(
-            order_id=order.order_id,
-            customer_id=order.customer_id,
-            status=order.status,
-            total_amount=order.total_amount,
-            version=order.version
-        )
-
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    # Return response
+    return OrderResponse(
+        order_id=order.order_id,
+        customer_id=order.customer_id,
+        status=order.status,
+        total_amount=order.total_amount,
+        version=order.version
+    )
 
 
 @app.get("/orders/{order_id}", response_model=OrderResponse)
@@ -158,26 +160,20 @@ async def get_order(order_id: str) -> OrderResponse:
     if not engine:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
-    try:
-        # Query order from database
-        uow = db.SqlAlchemyUnitOfWork(engine)
-        async with uow:
-            order = await uow.orders.get(order_id)
+    # Query order from database
+    uow = db.SqlAlchemyUnitOfWork(engine)
+    async with uow:
+        order = await uow.orders.get(order_id)
 
-        # Check if order exists
-        if not order:
-            raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
+    # Check if order exists
+    if not order:
+        raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
 
-        # Return response
-        return OrderResponse(
-            order_id=order.order_id,
-            customer_id=order.customer_id,
-            status=order.status,
-            total_amount=order.total_amount,
-            version=order.version
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    # Return response
+    return OrderResponse(
+        order_id=order.order_id,
+        customer_id=order.customer_id,
+        status=order.status,
+        total_amount=order.total_amount,
+        version=order.version
+    )
