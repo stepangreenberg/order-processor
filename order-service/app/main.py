@@ -79,3 +79,34 @@ async def create_order(request: CreateOrderRequest) -> OrderResponse:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@app.get("/orders/{order_id}", response_model=OrderResponse)
+async def get_order(order_id: str) -> OrderResponse:
+    """Get order details by ID."""
+    if not engine:
+        raise HTTPException(status_code=500, detail="Database not initialized")
+
+    try:
+        # Query order from database
+        uow = db.SqlAlchemyUnitOfWork(engine)
+        async with uow:
+            order = await uow.orders.get(order_id)
+
+        # Check if order exists
+        if not order:
+            raise HTTPException(status_code=404, detail=f"Order {order_id} not found")
+
+        # Return response
+        return OrderResponse(
+            order_id=order.order_id,
+            customer_id=order.customer_id,
+            status=order.status,
+            total_amount=order.total_amount,
+            version=order.version
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
