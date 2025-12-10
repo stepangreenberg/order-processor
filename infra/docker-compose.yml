@@ -52,6 +52,8 @@ services:
       context: ../order-service
       dockerfile: Dockerfile
     container_name: order_processor-order-service
+    volumes:
+      - ../order-service:/app
     environment:
       APP__DB_DSN: postgresql+asyncpg://orderuser:orderpass@order-db:5432/orderdb
       APP__RABBIT_URL: amqp://guest:guest@rabbitmq:5672/
@@ -70,6 +72,8 @@ services:
       context: ../processor-service
       dockerfile: Dockerfile
     container_name: order_processor-processor-service
+    volumes:
+      - ../processor-service:/app
     environment:
       APP__DB_DSN: postgresql+asyncpg://processor_user:processor_pass@processor-db:5432/processor_db
       APP__RABBIT_URL: amqp://guest:guest@rabbitmq:5672/

@@ -19,12 +19,19 @@ class ItemLine:
 
 
 class Order:
-    def __init__(self, order_id: str, customer_id: str, items: List[ItemLine]):
+    def __init__(
+        self,
+        order_id: str,
+        customer_id: str,
+        items: List[ItemLine],
+        status: str = "pending",
+        version: int = 1,
+    ):
         self.order_id = order_id
         self.customer_id = customer_id
         self.items = items
-        self.status = "pending"
-        self.version = 1
+        self.status = status
+        self.version = version
         self.total_amount = sum(item.total() for item in items)
 
     @classmethod
@@ -37,3 +44,22 @@ class Order:
             raise ValidationError("Item price must be positive")
 
         return cls(order_id=order_id, customer_id=customer_id, items=items)
+
+    @classmethod
+    def hydrate(
+        cls,
+        order_id: str,
+        customer_id: str,
+        items: List[ItemLine],
+        status: str,
+        version: int,
+        total_amount: float,
+    ) -> "Order":
+        obj = cls.__new__(cls)
+        obj.order_id = order_id
+        obj.customer_id = customer_id
+        obj.items = items
+        obj.status = status
+        obj.version = version
+        obj.total_amount = total_amount
+        return obj
