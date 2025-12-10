@@ -1,9 +1,10 @@
 import os
 import pytest
 import pytest_asyncio
+from datetime import datetime, timezone, timedelta
 from testcontainers.postgres import PostgresContainer
 from testcontainers.rabbitmq import RabbitMqContainer
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 import asyncio
 
 from infrastructure import db
@@ -122,7 +123,15 @@ async def test_outbox_publisher_retries_on_failure(initialized_db):
         assert row.published_at is None  # Should still be unpublished
         assert row.retry_count == 1  # Should increment retry_count
 
-    # Now retry with valid URL (should succeed)
+    # Set last_retry_at to 10 seconds ago so backoff delay has elapsed
+    async with engine.begin() as conn:
+        await conn.execute(
+            update(db.outbox)
+            .where(db.outbox.c.id == event_id)
+            .values(last_retry_at=(datetime.now(timezone.utc) - timedelta(seconds=10)).isoformat())
+        )
+
+    # Now retry with valid URL (should succeed since backoff has elapsed)
     publisher_good = OutboxPublisher(engine)  # Uses valid URL from env
     published_count = await publisher_good.publish_pending()
 

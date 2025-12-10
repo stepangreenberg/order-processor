@@ -13,6 +13,45 @@ from infrastructure.db import SqlAlchemyUnitOfWork, outbox
 from application.use_cases import HandleOrderCreatedUseCase, HandleOrderCreatedCommand
 
 
+# Retry configuration
+MAX_RETRIES = 5
+INITIAL_BACKOFF_SECONDS = 5
+MAX_BACKOFF_SECONDS = 300  # 5 minutes
+
+
+def calculate_backoff_delay(retry_count: int) -> int:
+    """Calculate exponential backoff delay in seconds."""
+    if retry_count <= 0:
+        return INITIAL_BACKOFF_SECONDS
+    delay = INITIAL_BACKOFF_SECONDS * (2 ** (retry_count - 1))
+    return min(delay, MAX_BACKOFF_SECONDS)
+
+
+def should_retry_event(retry_count: int) -> bool:
+    """Check if event should be retried based on retry count."""
+    return retry_count < MAX_RETRIES
+
+
+def should_retry_event_with_backoff(retry_count: int, last_retry_at: Optional[str]) -> bool:
+    """Check if event should be retried considering backoff delay."""
+    if not should_retry_event(retry_count):
+        return False
+
+    if last_retry_at is None:
+        return True
+
+    backoff_delay = calculate_backoff_delay(retry_count)
+    last_retry = datetime.fromisoformat(last_retry_at)
+    now = datetime.now(timezone.utc)
+
+    # Handle timezone-naive datetime
+    if last_retry.tzinfo is None:
+        now = now.replace(tzinfo=None)
+
+    time_since_retry = (now - last_retry).total_seconds()
+    return time_since_retry >= backoff_delay
+
+
 class OrderCreatedConsumer:
     """Consumer for order.created events from RabbitMQ."""
 
@@ -75,6 +114,13 @@ class OutboxPublisher:
         for event in events:
             event_data = event._mapping
 
+            # Check if event should be retried (respecting max retries and backoff)
+            if not should_retry_event_with_backoff(
+                event_data["retry_count"],
+                event_data.get("last_retry_at")
+            ):
+                continue  # Skip this event (either max retries reached or backoff not elapsed)
+
             try:
                 # Connect to RabbitMQ
                 connection = await aio_pika.connect_robust(self.rabbitmq_url)
@@ -112,12 +158,15 @@ class OutboxPublisher:
                 published_count += 1
 
             except Exception as e:
-                # On failure, increment retry_count
+                # On failure, increment retry_count and update last_retry_at
                 async with self.engine.begin() as conn:
                     await conn.execute(
                         update(outbox)
                         .where(outbox.c.id == event_data["id"])
-                        .values(retry_count=outbox.c.retry_count + 1)
+                        .values(
+                            retry_count=outbox.c.retry_count + 1,
+                            last_retry_at=datetime.now(timezone.utc).isoformat()
+                        )
                     )
                 # Continue to next event (don't fail entire batch)
 

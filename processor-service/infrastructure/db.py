@@ -31,6 +31,7 @@ outbox = Table(
     Column("payload", JSONB, nullable=False),
     Column("published_at", String, nullable=True),
     Column("retry_count", Integer, nullable=False, default=0),
+    Column("last_retry_at", String, nullable=True),
 )
 
 # Inbox table - for event deduplication
