@@ -1,5 +1,6 @@
 """RabbitMQ message bus and outbox publisher."""
 
+import json
 import os
 from datetime import datetime, timezone
 from typing import Optional
@@ -8,7 +9,8 @@ import aio_pika
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from infrastructure.db import outbox
+from infrastructure.db import outbox, SqlAlchemyUnitOfWork
+from application.use_cases import ApplyProcessedUseCase, ApplyProcessedCommand
 
 
 class OutboxPublisher:
@@ -89,3 +91,38 @@ class OutboxPublisher:
                 # Continue to next event (don't fail entire batch)
 
         return published_count
+
+
+class OrderProcessedConsumer:
+    """Consumer for order.processed events from RabbitMQ."""
+
+    def __init__(self, engine: AsyncEngine):
+        self.engine = engine
+
+    async def handle_message(self, message_body: str) -> None:
+        """
+        Handle incoming order.processed message.
+        Applies the processed event to update order status.
+        Uses inbox pattern for deduplication.
+        """
+        # Parse message
+        payload = json.loads(message_body)
+        order_id = payload["order_id"]
+        status = payload["status"]
+        version = payload["version"]
+        reason = payload.get("reason")
+
+        # Create event key for deduplication
+        event_key = f"order.processed:{order_id}:{version}"
+
+        # Apply the processed event
+        # Note: ApplyProcessedUseCase manages its own UnitOfWork and handles inbox internally
+        command = ApplyProcessedCommand(
+            order_id=order_id,
+            status=status,
+            reason=reason,
+            version=version
+        )
+        uow = SqlAlchemyUnitOfWork(self.engine)
+        use_case = ApplyProcessedUseCase(uow)
+        await use_case.execute(command)
