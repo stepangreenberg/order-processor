@@ -21,8 +21,11 @@ class OutboxPublisher:
     async def publish_pending(self) -> int:
         """
         Publish all pending (unpublished) events from outbox to RabbitMQ.
-        Returns number of events published.
+        Returns number of events successfully published.
+        On failure, increments retry_count for failed events.
         """
+        import json
+
         # Get unpublished events
         async with self.engine.begin() as conn:
             result = await conn.execute(
@@ -33,37 +36,39 @@ class OutboxPublisher:
         if not events:
             return 0
 
-        # Connect to RabbitMQ
-        connection = await aio_pika.connect_robust(self.rabbitmq_url)
-        async with connection:
-            channel = await connection.channel()
+        published_count = 0
 
-            # Publish each event
-            for event in events:
-                event_data = event._mapping
+        # Try to publish each event independently
+        for event in events:
+            event_data = event._mapping
 
-                # Publish to exchange
-                exchange = await channel.declare_exchange(
-                    "orders",
-                    aio_pika.ExchangeType.TOPIC,
-                    durable=True
-                )
+            try:
+                # Connect to RabbitMQ
+                connection = await aio_pika.connect_robust(self.rabbitmq_url)
+                async with connection:
+                    channel = await connection.channel()
 
-                # Convert payload to JSON string
-                import json
-                message_body = json.dumps(event_data["payload"]).encode()
+                    # Publish to exchange
+                    exchange = await channel.declare_exchange(
+                        "orders",
+                        aio_pika.ExchangeType.TOPIC,
+                        durable=True
+                    )
 
-                # Publish message
-                await exchange.publish(
-                    aio_pika.Message(
-                        body=message_body,
-                        content_type="application/json",
-                        delivery_mode=aio_pika.DeliveryMode.PERSISTENT
-                    ),
-                    routing_key=event_data["event_type"]
-                )
+                    # Convert payload to JSON string
+                    message_body = json.dumps(event_data["payload"]).encode()
 
-                # Mark as published
+                    # Publish message
+                    await exchange.publish(
+                        aio_pika.Message(
+                            body=message_body,
+                            content_type="application/json",
+                            delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+                        ),
+                        routing_key=event_data["event_type"]
+                    )
+
+                # Mark as published (only if publish succeeded)
                 async with self.engine.begin() as conn:
                     await conn.execute(
                         update(outbox)
@@ -71,4 +76,16 @@ class OutboxPublisher:
                         .values(published_at=datetime.now(timezone.utc).isoformat())
                     )
 
-        return len(events)
+                published_count += 1
+
+            except Exception as e:
+                # On failure, increment retry_count
+                async with self.engine.begin() as conn:
+                    await conn.execute(
+                        update(outbox)
+                        .where(outbox.c.id == event_data["id"])
+                        .values(retry_count=outbox.c.retry_count + 1)
+                    )
+                # Continue to next event (don't fail entire batch)
+
+        return published_count

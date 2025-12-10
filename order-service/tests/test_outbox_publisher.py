@@ -84,3 +84,55 @@ async def test_outbox_publisher_publishes_pending_events(initialized_db):
         row = result.first()
         assert row is not None
         assert row.published_at is not None  # Should have timestamp
+
+
+@pytest.mark.asyncio
+async def test_outbox_publisher_retries_on_failure(initialized_db):
+    """Test that OutboxPublisher increments retry_count on failure and can retry successfully."""
+    engine = initialized_db
+
+    # Insert unpublished event into outbox
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            db.outbox.insert().values(
+                event_type="order.retry",
+                payload={"order_id": "ord-retry-123"},
+                published_at=None,
+                retry_count=0
+            ).returning(db.outbox.c.id)
+        )
+        event_id = result.scalar()
+
+    # Try to publish with invalid RabbitMQ URL (should fail)
+    publisher_bad = OutboxPublisher(engine, rabbitmq_url="amqp://guest:guest@invalid-host:5672/")
+
+    try:
+        await publisher_bad.publish_pending()
+    except Exception:
+        pass  # Expected to fail
+
+    # Verify event is NOT marked as published
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            select(db.outbox.c.published_at, db.outbox.c.retry_count)
+            .where(db.outbox.c.id == event_id)
+        )
+        row = result.first()
+        assert row is not None
+        assert row.published_at is None  # Should still be unpublished
+        assert row.retry_count == 1  # Should increment retry_count
+
+    # Now retry with valid URL (should succeed)
+    publisher_good = OutboxPublisher(engine)  # Uses valid URL from env
+    published_count = await publisher_good.publish_pending()
+
+    assert published_count == 1
+
+    # Verify event is now marked as published
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            select(db.outbox.c.published_at).where(db.outbox.c.id == event_id)
+        )
+        row = result.first()
+        assert row is not None
+        assert row.published_at is not None  # Should be published now
