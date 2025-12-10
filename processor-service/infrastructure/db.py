@@ -167,6 +167,11 @@ class SqlAlchemyUnitOfWork:
         return self._processing_states_repo
 
     @property
+    def states(self) -> ProcessingStateRepository:
+        """Alias for processing_states (for Protocol compatibility)."""
+        return self.processing_states
+
+    @property
     def outbox(self) -> OutboxWriter:
         """Get outbox writer."""
         if not self._outbox:
