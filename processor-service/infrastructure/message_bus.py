@@ -68,7 +68,12 @@ class OrderCreatedConsumer:
         # Parse message
         payload = json.loads(message_body)
         order_id = payload["order_id"]
-        items = payload.get("items", [])
+        items_payload = payload.get("items", [])
+        # Normalize incoming items to a list of SKUs expected by the domain
+        items = [
+            item["sku"] if isinstance(item, dict) and "sku" in item else str(item)
+            for item in items_payload
+        ]
         amount = payload["amount"]
         version = payload.get("version", 1)
 

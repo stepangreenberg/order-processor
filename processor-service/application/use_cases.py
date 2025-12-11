@@ -74,7 +74,8 @@ class HandleOrderCreatedUseCase:
                     "order_id": cmd.order_id,
                     "status": result.status,
                     "reason": result.reason,
-                    "version": state.version,
+                    # Increment version so order-service applies the processed event
+                    "version": state.version + 1,
                 },
             )
             await self.uow.commit()
