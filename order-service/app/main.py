@@ -2,7 +2,7 @@ import os
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import Body, FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -131,38 +131,33 @@ async def get_metrics() -> Response:
 
 
 @app.post("/orders", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
-async def create_order(
-    request: CreateOrderRequest = Body(
-        ...,
-        examples={
-            "success": {
-                "summary": "Успешный заказ",
-                "description": "Создаст заказ со статусом pending, дальше асинхронно перейдёт в done/failed.",
-                "value": {
-                    "order_id": "ord-sample-success",
-                    "customer_id": "cust-123",
-                    "items": [
-                        {"sku": "laptop", "quantity": 1, "price": 1200.0},
-                        {"sku": "mouse", "quantity": 2, "price": 25.0}
-                    ]
-                },
-            },
-            "embargo": {
-                "summary": "Запрещённые товары",
-                "description": "Содержит SKU под эмбарго (pineapple_pizza/teapot) — обработка вернёт failed с причиной.",
-                "value": {
-                    "order_id": "ord-embargo-1",
-                    "customer_id": "cust-embargo",
-                    "items": [
-                        {"sku": "pineapple_pizza", "quantity": 1, "price": 15.0},
-                        {"sku": "teapot", "quantity": 1, "price": 30.0}
-                    ]
-                },
-            },
-        },
-    )
-) -> OrderResponse:
-    """Create a new order (idempotent - returns existing if already created)."""
+async def create_order(request: CreateOrderRequest) -> OrderResponse:
+    """Create a new order (idempotent - returns existing if already created).
+
+    Примеры пейлоада (эмбарго отрабатывает всегда, остальные товары имеют ~60% шанса перейти в done, иначе failed c "Random failure"):
+    - Успех:
+      ```
+      {
+        "order_id": "ord-sample-success",
+        "customer_id": "cust-123",
+        "items": [
+          {"sku": "laptop", "quantity": 1, "price": 1200.0},
+          {"sku": "mouse", "quantity": 2, "price": 25.0}
+        ]
+      }
+      ```
+    - Запрещённые SKU (уйдёт в failed с причиной эмбарго):
+      ```
+      {
+        "order_id": "ord-embargo-1",
+        "customer_id": "cust-embargo",
+        "items": [
+          {"sku": "pineapple_pizza", "quantity": 1, "price": 15.0},
+          {"sku": "teapot", "quantity": 1, "price": 30.0}
+        ]
+      }
+      ```
+    """
     if not engine:
         raise HTTPException(status_code=500, detail="Database not initialized")
 
@@ -191,7 +186,8 @@ async def create_order(
         customer_id=order.customer_id,
         status=order.status,
         total_amount=order.total_amount,
-        version=order.version
+        version=order.version,
+        reason=order.reason,
     )
 
 
@@ -216,5 +212,6 @@ async def get_order(order_id: str) -> OrderResponse:
         customer_id=order.customer_id,
         status=order.status,
         total_amount=order.total_amount,
-        version=order.version
+        version=order.version,
+        reason=order.reason,
     )

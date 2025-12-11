@@ -20,6 +20,7 @@ orders = Table(
     Column("amount", Float, nullable=False),
     Column("status", String, nullable=False),
     Column("version", Integer, nullable=False),
+    Column("reason", String, nullable=True),
 )
 
 outbox = Table(
@@ -76,6 +77,7 @@ class OrderRepository:
             status=data["status"],
             version=data["version"],
             total_amount=data["amount"],
+            reason=data.get("reason"),
         )
 
     async def add(self, order: Order) -> None:
@@ -86,6 +88,7 @@ class OrderRepository:
             amount=order.total_amount,
             status=order.status,
             version=order.version,
+            reason=order.reason,
         )
         # Upsert: insert if new, update if exists
         stmt = stmt.on_conflict_do_update(
@@ -95,6 +98,7 @@ class OrderRepository:
                 "version": order.version,
                 "amount": order.total_amount,
                 "items": [{"sku": i.sku, "quantity": i.quantity, "price": i.price} for i in order.items],
+                "reason": order.reason,
             }
         )
         await self.session.execute(stmt)
