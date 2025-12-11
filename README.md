@@ -86,7 +86,7 @@ cd processor-service && python3 -m pip install -r requirements.txt && python3 -m
 - Processor service: схема создаётся через SQLAlchemy `metadata.create_all()` при старте.
 
 ## 5. Архитектура
-- Краткое описание и паттерны: `ARCHITECTURE.md`
+- Краткое описание и паттерны: [ARCHITECTURE.md](ARCHITECTURE.md)
 - Ключевые идеи: Event-driven, Outbox/Inbox, retries+DLQ, оптимистичная версионность, чистая архитектура (Domain/Application/Infrastructure).
 
 ## 6. Структура проекта
