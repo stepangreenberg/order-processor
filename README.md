@@ -66,7 +66,7 @@ docker-compose down -v       # с удалением данных
 }
 ```
 
-Ответы (GET /orders/{order_id}):
+Ответы (POST /orders и GET /orders/{order_id} — схема одна и та же):
 - Успех:
 ```json
 {
