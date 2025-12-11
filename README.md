@@ -42,7 +42,7 @@ docker-compose down -v       # с удалением данных
 
 Примеры пейлоада:
 
-Успех:
+Успех (запрос):
 ```json
 {
   "order_id": "ord-sample-success",
@@ -63,6 +63,30 @@ docker-compose down -v       # с удалением данных
     {"sku": "pineapple_pizza", "quantity": 1, "price": 15.0},
     {"sku": "teapot", "quantity": 1, "price": 30.0}
   ]
+}
+```
+
+Ответы (GET /orders/{order_id}):
+- Успех:
+```json
+{
+  "order_id": "ord-sample-success",
+  "customer_id": "cust-123",
+  "status": "done",
+  "total_amount": 1250.0,
+  "version": 2,
+  "fail_reason": null
+}
+```
+- Провал с эмбарго:
+```json
+{
+  "order_id": "ord-embargo-1",
+  "customer_id": "cust-embargo",
+  "status": "failed",
+  "total_amount": 45.0,
+  "version": 2,
+  "fail_reason": "Pineapple/teapot embargo"
 }
 ```
 
