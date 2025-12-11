@@ -67,7 +67,7 @@ async def test_consumer_applies_processed_event(initialized_db):
     message_payload = {
         "order_id": "ord-proc-123",
         "status": "success",  # Will be mapped to "done" by use case
-        "reason": None,
+        "fail_reason": None,
         "version": 2
     }
 
@@ -108,7 +108,7 @@ async def test_consumer_handles_duplicate_events(initialized_db):
     message_payload = {
         "order_id": "ord-dup-456",
         "status": "success",
-        "reason": None,
+        "fail_reason": None,
         "version": 2
     }
 
@@ -158,7 +158,7 @@ async def test_consumer_ignores_stale_versions(initialized_db):
     stale_message = {
         "order_id": "ord-stale-789",
         "status": "failed",  # Different status
-        "reason": "Something went wrong",
+        "fail_reason": "Something went wrong",
         "version": 2  # Stale version (< 3)
     }
 

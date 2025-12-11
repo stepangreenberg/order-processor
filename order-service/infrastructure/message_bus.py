@@ -184,7 +184,7 @@ class OrderProcessedConsumer:
         order_id = payload["order_id"]
         status = payload["status"]
         version = payload["version"]
-        reason = payload.get("reason")
+        fail_reason = payload.get("fail_reason")
 
         # Create event key for deduplication
         event_key = f"order.processed:{order_id}:{version}"
@@ -194,7 +194,7 @@ class OrderProcessedConsumer:
         command = ApplyProcessedCommand(
             order_id=order_id,
             status=status,
-            reason=reason,
+            fail_reason=fail_reason,
             version=version
         )
         uow = SqlAlchemyUnitOfWork(self.engine)

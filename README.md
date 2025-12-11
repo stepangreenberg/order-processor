@@ -36,7 +36,7 @@ docker-compose down -v       # с удалением данных
 ## 2. HTTP API
 
 - POST /orders — создать заказ (идемпотентно)
-- GET /orders/{order_id} — статус заказа (поле `reason` присутствует при failed)
+- GET /orders/{order_id} — статус заказа (поле `fail_reason` присутствует при failed)
 - GET /health — healthcheck (оба сервиса)
 - GET /metrics — простые метрики (оба сервиса)
 

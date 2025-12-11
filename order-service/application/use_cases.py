@@ -55,8 +55,8 @@ class CreateOrderUseCase:
                 customer_id=cmd.customer_id,
                 items=cmd.items,
             )
-            # reason None на старте (может быть заполнен обработчиком)
-            order.reason = None
+            # fail_reason None на старте (может быть заполнен обработчиком)
+            order.fail_reason = None
             await self.uow.orders.add(order)
             await self.uow.outbox.put(
                 event_type="order.created",
@@ -77,7 +77,7 @@ class CreateOrderUseCase:
 class ApplyProcessedCommand:
     order_id: str
     status: str
-    reason: str | None
+    fail_reason: str | None
     version: int
 
 
@@ -99,7 +99,7 @@ class ApplyProcessedUseCase:
 
             order.status = "done" if cmd.status == "success" else "failed"
             order.version = cmd.version
-            order.reason = cmd.reason
+            order.fail_reason = cmd.fail_reason
             await self.uow.inbox.add(event_key)
             await self.uow.orders.add(order)
             await self.uow.commit()

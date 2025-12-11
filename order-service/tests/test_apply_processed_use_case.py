@@ -53,7 +53,7 @@ async def test_apply_processed_updates_order_and_inbox():
     )
     uow.orders.storage[order.order_id] = order
     use_case = ApplyProcessedUseCase(uow)
-    cmd = ApplyProcessedCommand(order_id="ord-1", status="success", reason=None, version=2)
+    cmd = ApplyProcessedCommand(order_id="ord-1", status="success", fail_reason=None, version=2)
 
     updated = await use_case.execute(cmd)
 
@@ -74,7 +74,7 @@ async def test_apply_processed_is_idempotent_for_duplicates():
     )
     uow.orders.storage[order.order_id] = order
     use_case = ApplyProcessedUseCase(uow)
-    cmd = ApplyProcessedCommand(order_id="ord-1", status="failed", reason="oops", version=2)
+    cmd = ApplyProcessedCommand(order_id="ord-1", status="failed", fail_reason="oops", version=2)
 
     await use_case.execute(cmd)
     second = await use_case.execute(cmd)
@@ -97,7 +97,7 @@ async def test_apply_processed_ignores_old_version():
     order.version = 3
     uow.orders.storage[order.order_id] = order
     use_case = ApplyProcessedUseCase(uow)
-    cmd = ApplyProcessedCommand(order_id="ord-1", status="success", reason=None, version=2)
+    cmd = ApplyProcessedCommand(order_id="ord-1", status="success", fail_reason=None, version=2)
 
     res = await use_case.execute(cmd)
 

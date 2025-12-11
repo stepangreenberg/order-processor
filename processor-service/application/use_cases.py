@@ -73,7 +73,7 @@ class HandleOrderCreatedUseCase:
                 payload={
                     "order_id": cmd.order_id,
                     "status": result.status,
-                    "reason": result.reason,
+                    "fail_reason": result.reason,
                     # Increment version so order-service applies the processed event
                     "version": state.version + 1,
                 },

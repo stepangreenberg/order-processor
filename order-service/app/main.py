@@ -187,7 +187,7 @@ async def create_order(request: CreateOrderRequest) -> OrderResponse:
         status=order.status,
         total_amount=order.total_amount,
         version=order.version,
-        reason=order.reason,
+        fail_reason=order.fail_reason,
     )
 
 
@@ -213,5 +213,5 @@ async def get_order(order_id: str) -> OrderResponse:
         status=order.status,
         total_amount=order.total_amount,
         version=order.version,
-        reason=order.reason,
+        fail_reason=order.fail_reason,
     )

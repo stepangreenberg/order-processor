@@ -26,14 +26,14 @@ class Order:
         items: List[ItemLine],
         status: str = "pending",
         version: int = 1,
-        reason: Optional[str] = None,
+        fail_reason: Optional[str] = None,
     ):
         self.order_id = order_id
         self.customer_id = customer_id
         self.items = items
         self.status = status
         self.version = version
-        self.reason = reason
+        self.fail_reason = fail_reason
         self.total_amount = sum(item.total() for item in items)
 
     @classmethod
@@ -56,7 +56,7 @@ class Order:
         status: str,
         version: int,
         total_amount: float,
-        reason: Optional[str],
+        fail_reason: Optional[str],
     ) -> "Order":
         obj = cls.__new__(cls)
         obj.order_id = order_id
@@ -65,5 +65,5 @@ class Order:
         obj.status = status
         obj.version = version
         obj.total_amount = total_amount
-        obj.reason = reason
+        obj.fail_reason = fail_reason
         return obj

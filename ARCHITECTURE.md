@@ -268,7 +268,7 @@ CREATE TABLE processing_states (
 {
   "order_id": "ord-001",
   "status": "success",  // или "failed"
-  "reason": null,       // или сообщение об ошибке
+  "fail_reason": null,  // или сообщение об ошибке
   "version": 2
 }
 ```

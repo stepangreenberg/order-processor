@@ -33,4 +33,4 @@ class OrderResponse(BaseModel):
     status: str
     total_amount: float
     version: int
-    reason: str | None = None
+    fail_reason: str | None = None
