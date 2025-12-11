@@ -2,7 +2,7 @@ import os
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Body, FastAPI, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -131,7 +131,37 @@ async def get_metrics() -> Response:
 
 
 @app.post("/orders", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
-async def create_order(request: CreateOrderRequest) -> OrderResponse:
+async def create_order(
+    request: CreateOrderRequest = Body(
+        ...,
+        examples={
+            "success": {
+                "summary": "Успешный заказ",
+                "description": "Создаст заказ со статусом pending, дальше асинхронно перейдёт в done/failed.",
+                "value": {
+                    "order_id": "ord-sample-success",
+                    "customer_id": "cust-123",
+                    "items": [
+                        {"sku": "laptop", "quantity": 1, "price": 1200.0},
+                        {"sku": "mouse", "quantity": 2, "price": 25.0}
+                    ]
+                },
+            },
+            "embargo": {
+                "summary": "Запрещённые товары",
+                "description": "Содержит SKU под эмбарго (pineapple_pizza/teapot) — обработка вернёт failed с причиной.",
+                "value": {
+                    "order_id": "ord-embargo-1",
+                    "customer_id": "cust-embargo",
+                    "items": [
+                        {"sku": "pineapple_pizza", "quantity": 1, "price": 15.0},
+                        {"sku": "teapot", "quantity": 1, "price": 30.0}
+                    ]
+                },
+            },
+        },
+    )
+) -> OrderResponse:
     """Create a new order (idempotent - returns existing if already created)."""
     if not engine:
         raise HTTPException(status_code=500, detail="Database not initialized")
